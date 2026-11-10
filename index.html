@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Libro mágico">
+<meta name="theme-color" content="#000000">
+<title>Libro mágico del mago Camilo</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+#start,#setup{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:#000}
+#start{color:#444;font-size:16px;line-height:1.5}
+#setup{display:none;font-size:20px;z-index:5}
+#setup small{color:#888;margin-top:12px;font-size:14px}
+#list{position:fixed;inset:0;display:none;grid-template-columns:1fr 1fr;gap:2px 14px;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);align-content:center;background:#000;font-size:16px;z-index:4}
+#list div{padding:3px 6px}
+#list b{display:inline-block;width:24px}
+#list .on{color:#000;background:#fff;border-radius:4px}
+#list .no{color:#777}
+#gear{position:fixed;right:6px;bottom:calc(6px + env(safe-area-inset-bottom));color:#222;font-size:22px;padding:12px;z-index:9}
+</style>
+</head>
+<body>
+<div id="start">Libro mágico<br>del mago Camilo<br><br>Toca para empezar</div>
+<div id="setup"></div>
+<div id="list"></div>
+<div id="gear">⚙</div>
+<script>
+const L="ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
+const W={A:"Alrededor",B:"Brillaban",C:"Corazón",D:"Después",E:"Entonces",F:"Finalmente",G:"Gritaban",H:"Historia",I:"Increíble",J:"Jugando",L:"Lágrimas",M:"Mientras",N:"Naturaleza",O:"Oscuridad",P:"Personas",Q:"Quedaron",R:"Recuerdos",S:"Siempre",T:"Tranquilidad",U:"Universo",V:"Ventanas",Z:"Zapatos"};
+const ACT=["sumar","reiniciar","mostrar","repetir"];
+const NOM={sumar:"SUMAR una letra",reiniciar:"REINICIAR la cuenta",mostrar:"MOSTRAR letras (mantén pulsado)",repetir:"REPETIR el audio"};
+let keys={sumar:["ArrowRight","PageDown"],reiniciar:["ArrowLeft","PageUp"],mostrar:["b","."],repetir:["Enter"," "]};
+try{const s=JSON.parse(localStorage.getItem("lm_keys"));if(s&&s.sumar)keys=s}catch(e){}
+const $=id=>document.getElementById(id);
+let n=0,t=null,last=null,started=false,step=-1;
+
+function say(txt,vol){
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(txt);
+    u.lang="es-ES";u.rate=.95;
+    if(vol!==undefined)u.volume=vol;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function speakLast(){
+  if(!last)return;
+  say(W[last]?last+", "+W[last]:last+", no hay palabra");
+}
+function announce(){
+  if(!n)return;
+  if(n>L.length){say("Fuera de rango");n=0;return}
+  last=L[n-1];n=0;
+  speakLast();
+}
+function renderList(){
+  $("list").innerHTML=L.map(l=>{
+    const w=W[l];
+    return '<div class="'+(l===last?"on":(w?"":"no"))+'"><b>'+l+'</b>'+(w||"—")+'</div>';
+  }).join("");
+}
+function showList(){renderList();$("list").style.display="grid"}
+function hideList(){$("list").style.display="none"}
+
+function start(){
+  if(started)return;
+  started=true;
+  $("start").style.display="none";
+  say(" ",0);
+  try{navigator.wakeLock&&navigator.wakeLock.request("screen")}catch(e){}
+}
+$("start").addEventListener("click",start);
+
+function showStep(){
+  $("setup").innerHTML="Pulsa el botón del control para<br><br><b>"+NOM[ACT[step]]+"</b><small>"+(step+1)+" de 4</small>";
+}
+$("gear").addEventListener("pointerdown",e=>{
+  e.stopPropagation();
+  step=0;showStep();$("setup").style.display="flex";
+});
+
+addEventListener("keydown",e=>{
+  if(step>=0){
+    e.preventDefault();
+    if(e.repeat)return;
+    keys[ACT[step]]=[e.key];
+    step++;
+    if(step>=4){
+      try{localStorage.setItem("lm_keys",JSON.stringify(keys))}catch(x){}
+      step=-1;$("setup").style.display="none";
+    }else showStep();
+    return;
+  }
+  if(!started)return;
+  const a=ACT.find(x=>keys[x].includes(e.key));
+  if(!a)return;
+  e.preventDefault();
+  if(a==="mostrar"){showList();return}
+  if(e.repeat)return;
+  if(a==="sumar"){n++;clearTimeout(t);t=setTimeout(announce,1500)}
+  else if(a==="reiniciar"){n=0;clearTimeout(t);say("Otra vez")}
+  else if(a==="repetir"){speakLast()}
+});
+addEventListener("keyup",e=>{
+  if(!started||step>=0)return;
+  if(keys.mostrar.includes(e.key)){e.preventDefault();hideList()}
+});
+
+/* Tocar y mantener la pantalla también muestra las letras */
+addEventListener("pointerdown",e=>{if(started&&step<0&&e.target.id!=="gear")showList()});
+addEventListener("pointerup",hideList);
+addEventListener("pointercancel",hideList);
+addEventListener("contextmenu",e=>e.preventDefault());
+</script>
+</body>
+</html>
