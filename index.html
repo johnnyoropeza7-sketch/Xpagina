@@ -13,8 +13,14 @@
 html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 #start,#setup{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:#000}
 #start{color:#444;font-size:16px;line-height:1.5}
-#setup{display:none;font-size:20px;z-index:5}
-#setup small{color:#888;margin-top:12px;font-size:14px}
+#setup{display:none;z-index:5;justify-content:flex-start;align-items:stretch;text-align:left;overflow-y:auto;font-size:16px;padding:calc(18px + env(safe-area-inset-top)) 18px calc(30px + env(safe-area-inset-bottom))}
+#setup h2{margin:0 0 14px;font-size:20px;font-weight:600}
+#setup .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #222}
+#setup .row span{color:#999;font-size:14px}
+#setup button,#setup select{font:inherit;color:#fff;background:#222;border:1px solid #444;border-radius:8px;padding:8px 12px;max-width:55%}
+#setup input[type=range]{width:50%}
+#setup .acts{display:flex;gap:10px;margin-top:18px}
+#setup .acts button{flex:1;max-width:none}
 #list{position:fixed;inset:0;display:none;grid-template-columns:1fr 1fr;gap:2px 14px;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);align-content:center;background:#000;font-size:16px;z-index:4}
 #list div{padding:3px 6px}
 #list b{display:inline-block;width:24px}
@@ -32,18 +38,25 @@ html,body{margin:0;height:100%;background:#000;color:#fff;font-family:-apple-sys
 const L="ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 const W={A:"Alrededor",B:"Brillaban",C:"Corazón",D:"Después",E:"Entonces",F:"Finalmente",G:"Gritaban",H:"Historia",I:"Increíble",J:"Jugando",L:"Lágrimas",M:"Mientras",N:"Naturaleza",O:"Oscuridad",P:"Personas",Q:"Quedaron",R:"Recuerdos",S:"Siempre",T:"Tranquilidad",U:"Universo",V:"Ventanas",Z:"Zapatos"};
 const ACT=["sumar","reiniciar","mostrar","repetir"];
-const NOM={sumar:"SUMAR una letra",reiniciar:"REINICIAR la cuenta",mostrar:"MOSTRAR letras (mantén pulsado)",repetir:"REPETIR el audio"};
+const NOM={sumar:"SUMAR una letra",reiniciar:"REINICIAR la cuenta",mostrar:"MOSTRAR letras (mantener)",repetir:"REPETIR el audio"};
 let keys={sumar:["ArrowRight","PageDown"],reiniciar:["ArrowLeft","PageUp"],mostrar:["b","."],repetir:["Enter"," "]};
+let cfg={voice:"",rate:.95,vol:1,wait:1500};
 try{const s=JSON.parse(localStorage.getItem("lm_keys"));if(s&&s.sumar)keys=s}catch(e){}
+try{const c=JSON.parse(localStorage.getItem("lm_cfg"));if(c)cfg=Object.assign(cfg,c)}catch(e){}
 const $=id=>document.getElementById(id);
-let n=0,t=null,last=null,started=false,step=-1;
+const save=()=>{try{localStorage.setItem("lm_keys",JSON.stringify(keys));localStorage.setItem("lm_cfg",JSON.stringify(cfg))}catch(e){}};
+let n=0,t=null,last=null,started=false,open=false,cap=null;
 
+function voices(){
+  try{const all=speechSynthesis.getVoices();const es=all.filter(v=>/^es/i.test(v.lang));return es.length?es:all}catch(e){return[]}
+}
 function say(txt,vol){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(txt);
-    u.lang="es-ES";u.rate=.95;
-    if(vol!==undefined)u.volume=vol;
+    u.lang="es-ES";u.rate=cfg.rate;u.volume=vol!==undefined?vol:cfg.vol;
+    const v=voices().find(x=>x.name===cfg.voice);
+    if(v){u.voice=v;u.lang=v.lang}
     speechSynthesis.speak(u);
   }catch(e){}
 }
@@ -75,24 +88,45 @@ function start(){
 }
 $("start").addEventListener("click",start);
 
-function showStep(){
-  $("setup").innerHTML="Pulsa el botón del control para<br><br><b>"+NOM[ACT[step]]+"</b><small>"+(step+1)+" de 4</small>";
+/* Panel de configuración */
+const lab=k=>k===" "?"Espacio":k;
+function panel(){
+  const vs=voices();
+  const sl=(id,txt,min,max,step,val)=>'<div class="row"><div>'+txt+'</div><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+val+'"></div>';
+  $("setup").innerHTML='<h2>Configuración</h2>'+
+    ACT.map(a=>'<div class="row"><div>'+NOM[a]+'<br><span>'+(cap===a?"Pulsa ahora el botón del control…":keys[a].map(lab).join(" / "))+'</span></div><button data-a="'+a+'">Cambiar</button></div>').join("")+
+    '<div class="row"><div>Voz</div><select id="vz">'+vs.map(x=>'<option value="'+x.name+'"'+(x.name===cfg.voice?" selected":"")+'>'+x.name+'</option>').join("")+'</select></div>'+
+    sl("rt","Velocidad de la voz",.6,1.4,.05,cfg.rate)+
+    sl("vl","Volumen de la voz",0,1,.1,cfg.vol)+
+    sl("wt","Espera tras la última pulsación (ms)",800,3000,100,cfg.wait)+
+    '<div class="acts"><button id="probar">Probar voz</button><button id="cerrar">Guardar y cerrar</button></div>';
 }
-$("gear").addEventListener("pointerdown",e=>{
-  e.stopPropagation();
-  step=0;showStep();$("setup").style.display="flex";
+function openPanel(){open=true;cap=null;panel();$("setup").style.display="flex"}
+function closePanel(){open=false;cap=null;save();$("setup").style.display="none"}
+try{speechSynthesis.onvoiceschanged=()=>{if(open&&!cap)panel()}}catch(e){}
+$("gear").addEventListener("pointerdown",e=>{e.stopPropagation();openPanel()});
+$("setup").addEventListener("pointerdown",e=>e.stopPropagation());
+$("setup").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.a){cap=b.dataset.a;panel()}
+  else if(b.id==="probar")say("C, Corazón");
+  else if(b.id==="cerrar")closePanel();
+});
+$("setup").addEventListener("input",e=>{
+  const i=e.target;
+  if(i.id==="rt")cfg.rate=+i.value;
+  else if(i.id==="vl")cfg.vol=+i.value;
+  else if(i.id==="wt")cfg.wait=+i.value;
+  else if(i.id==="vz")cfg.voice=i.value;
+  save();
 });
 
 addEventListener("keydown",e=>{
-  if(step>=0){
-    e.preventDefault();
-    if(e.repeat)return;
-    keys[ACT[step]]=[e.key];
-    step++;
-    if(step>=4){
-      try{localStorage.setItem("lm_keys",JSON.stringify(keys))}catch(x){}
-      step=-1;$("setup").style.display="none";
-    }else showStep();
+  if(open){
+    if(cap){
+      e.preventDefault();if(e.repeat)return;
+      keys[cap]=[e.key];cap=null;save();panel();
+    }
     return;
   }
   if(!started)return;
@@ -101,17 +135,17 @@ addEventListener("keydown",e=>{
   e.preventDefault();
   if(a==="mostrar"){showList();return}
   if(e.repeat)return;
-  if(a==="sumar"){n++;clearTimeout(t);t=setTimeout(announce,1500)}
+  if(a==="sumar"){n++;clearTimeout(t);t=setTimeout(announce,cfg.wait)}
   else if(a==="reiniciar"){n=0;clearTimeout(t);say("Otra vez")}
   else if(a==="repetir"){speakLast()}
 });
 addEventListener("keyup",e=>{
-  if(!started||step>=0)return;
+  if(!started||open)return;
   if(keys.mostrar.includes(e.key)){e.preventDefault();hideList()}
 });
 
 /* Tocar y mantener la pantalla también muestra las letras */
-addEventListener("pointerdown",e=>{if(started&&step<0&&e.target.id!=="gear")showList()});
+addEventListener("pointerdown",e=>{if(started&&!open&&e.target.id!=="gear")showList()});
 addEventListener("pointerup",hideList);
 addEventListener("pointercancel",hideList);
 addEventListener("contextmenu",e=>e.preventDefault());
